@@ -366,5 +366,6 @@ FodyWeavers.xsd
 *.sln.iml
 
 SharpFAI
+ADOFAI-Editor
 publish
 imgui.ini

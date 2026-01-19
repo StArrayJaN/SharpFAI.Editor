@@ -291,18 +291,23 @@ void main()
         var screenPoint = new Vector2i((int)mouseState.X, (int)mouseState.Y);
         io.MousePos = new System.Numerics.Vector2(screenPoint.X, screenPoint.Y);
 
+        // 正确处理按键事件：发送按下和释放事件
+        // Properly handle key events: send both press and release events
         foreach (Keys key in Enum.GetValues(typeof(Keys)))
         {
             if (key == Keys.Unknown)
             {
                 continue;
             }
-            // Use AddKeyEvent for newer ImGui versions
-            bool isDown = keyboardState.IsKeyDown(key);
-            if (isDown)
+            
+            ImGuiKey imguiKey = ConvertKey(key);
+            if (imguiKey == ImGuiKey.None)
             {
-                io.AddKeyEvent(ConvertKey(key), true);
+                continue;
             }
+            
+            bool isDown = keyboardState.IsKeyDown(key);
+            io.AddKeyEvent(imguiKey, isDown);
         }
 
         io.KeyCtrl = keyboardState.IsKeyDown(Keys.LeftControl) || keyboardState.IsKeyDown(Keys.RightControl);

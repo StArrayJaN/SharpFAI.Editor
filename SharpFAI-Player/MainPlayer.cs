@@ -17,70 +17,45 @@ namespace SharpFAI_Player;
 public class MainPlayer: GameWindow, IPlayer
 {
     #region ImGui Fields
-    private ImGuiController? _imGuiController;
-    private bool _showControlPanel = false;
-    private bool _showLevelInfo = false;
-    private bool _showAboutWindow = false;
-    private System.Numerics.Vector4 _clearColor = new System.Numerics.Vector4(0.05f, 0.05f, 0.05f, 1.0f);
+    protected ImGuiController? _imGuiController;
+    protected bool _showControlPanel = false;
+    protected bool _showLevelInfo = false;
+    protected bool _showAboutWindow = false;
+    protected System.Numerics.Vector4 _clearColor = new System.Numerics.Vector4(0.05f, 0.05f, 0.05f, 1.0f);
     #endregion
     
     [Note("对象变量")]
-    private Level? level;
-    private List<Floor> floors;
-    private Camera2D camera2D;
-    private Music music;
-    private Music hitSound;
-    private List<PlayerFloor> renderFloors;
-    private List<PlayerFloor> playerFloors;
-    private GLShader shader;
-    private Floor currentFloor;
-    private Planet lastPlanet;
-    private Planet currentPlanet;
-    private Planet redPlanet;
-    private Planet bluePlanet;
-    private List<double> noteTimes;
+    protected Level? level;
+    protected List<Floor> floors;
+    protected Camera2D camera2D;
+    protected Music music;
+    protected Music hitSound;
+    protected List<PlayerFloor> renderFloors;
+    protected List<PlayerFloor> playerFloors;
+    protected GLShader shader;
+    protected Floor currentFloor;
+    protected Planet lastPlanet;
+    protected Planet currentPlanet;
+    protected Planet redPlanet;
+    protected Planet bluePlanet;
+    protected List<double> noteTimes;
 
     [Note("基础类型变量")]
-    private bool isStarted;
-    private double angle;
-    private bool isCw;
-    private int currentIndex;
-    private bool initialized;
-    private string state;
-    private nint hwnd;
-    private double rotationSpeed;
-    private double currentTime;
+    protected bool isStarted;
+    protected double angle;
+    protected bool isCw;
+    protected int currentIndex;
+    protected bool initialized;
+    protected string state;
+    protected nint hwnd;
+    protected double rotationSpeed;
+    protected double currentTime;
     
     [Note("摄像机相关")]
-    private Vector2 cameraFromPos;
-    private Vector2 cameraToPos;
-    private float cameraTimer;
-    private float cameraSpeed = 2.0f;
-
-    [Note("捅死ModsTag和Yqloss和翼龙和Xbodw喵")]
-    [Note("这不是Main")]
-    public static void Main(string[] args)
-    {
-        AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
-        {
-            if (OperatingSystem.IsWindows())
-            {
-                NativeAPI.MessageBox(IntPtr.Zero, e.ExceptionObject?.ToString() ?? "Unknown Error","SharpFAI Player", 0);
-            }
-        };
-        NativeWindowSettings gameWindowSettings = new NativeWindowSettings
-        {
-            Title = "SharpFAI Player - A Dance of Fire and Ice",
-            Flags = ContextFlags.Default,
-            APIVersion = new Version(3, 3),
-            Vsync = VSyncMode.Off,
-            ClientSize = new OpenTK.Mathematics.Vector2i(1280, 720)
-        };
-        
-        // Start without a level file, user can open one from menu
-        MainPlayer player = new MainPlayer(GameWindowSettings.Default, gameWindowSettings, null);
-        player.Run(); 
-    }
+    protected Vector2 cameraFromPos;
+    protected Vector2 cameraToPos;
+    protected float cameraTimer;
+    protected float cameraSpeed = 2.0f;
     
     public MainPlayer(GameWindowSettings gameWindowSettings, NativeWindowSettings nativeWindowSettings, string? levelPath) 
         : base(gameWindowSettings, nativeWindowSettings)
@@ -179,7 +154,7 @@ public class MainPlayer: GameWindow, IPlayer
     public async void CreatePlayer()
     {
         // Check if level is loaded
-        if (ReferenceEquals(level,null))
+        if (level == null)
         {
             state = "请从菜单打开关卡文件 (文件 -> 打开关卡)";
             initialized = false;
@@ -555,9 +530,9 @@ public class MainPlayer: GameWindow, IPlayer
                     ImGui.Dummy(progressBarSize);
                     ImGui.Spacing();
                     
-                    ImGui.Text($"⏱ 时间: {currentTime:F2}s");
-                    ImGui.Text($"♪ 当前 BPM: {currentFloor?.bpm:F1}");
-                    ImGui.Text($"↻ 旋转角度: {angle:F1}°");
+                    ImGui.Text($"时间: {currentTime:F2}s");
+                    ImGui.Text($"当前 BPM: {currentFloor?.bpm:F1}");
+                    ImGui.Text($"旋转角度: {angle:F1}°");
                 }
                 
                 ImGui.Separator();
@@ -795,15 +770,12 @@ public class MainPlayer: GameWindow, IPlayer
 
             ImGui.EndMainMenuBar();
         }
-        
-        // Update title / 更新标题
-        Title = $"SharpFAI Player - {(isStarted ? "Playing" : "Paused")} {currentIndex}/{floors?.Count - 1 ?? 0} - FPS: {1 / UpdateTime:F0}";
     }
     
     private void RenderForegroundInfo()
     {
         // Only render if initialized / 仅在初始化后渲染
-        if (!initialized || ReferenceEquals(level,null) || floors == null || floors.Count == 0)
+        if (!initialized || level == null || floors == null || floors.Count == 0)
             return;
         
         var drawList = ImGui.GetForegroundDrawList();
@@ -1003,7 +975,7 @@ public class MainPlayer: GameWindow, IPlayer
 
     public void StartPlay()
     {
-        if (!initialized || ReferenceEquals(level,null))
+        if (!initialized || level == null)
             return;
             
         _ = StartPlayAsync();
@@ -1011,7 +983,7 @@ public class MainPlayer: GameWindow, IPlayer
 
     private async Task StartPlayAsync()
     {
-        if (ReferenceEquals(level,null))
+        if (level == null)
             return;
             
         int offset = level.GetSetting<int>("offset");
