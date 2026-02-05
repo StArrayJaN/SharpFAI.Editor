@@ -47,7 +47,8 @@ public partial class EditorPlayer : GameWindow
     
     // 渲染相关
     private List<PlayerFloor>? _playerFloors;
-    private List<PlayerFloor>? _renderFloors;
+    private int[] _cachedRenderOrder = Array.Empty<int>(); // 缓存的渲染顺序索引
+    private bool _needRenderOrderUpdate = true; // 标记是否需要更新渲染顺序
     private GLShader? _shader;
     private Camera2D? _camera2D;
     private bool _initialized;
@@ -101,6 +102,7 @@ public partial class EditorPlayer : GameWindow
     
     #region Input State
     private bool _isShiftPressed;
+    private bool _isButtonWindowHovered; // 标记鼠标是否在按钮窗口上
     #endregion
 
     public EditorPlayer(GameWindowSettings gameWindowSettings, NativeWindowSettings nativeWindowSettings, string? levelPath)
@@ -256,7 +258,8 @@ public partial class EditorPlayer : GameWindow
             }
             _playerFloors = null;
         }
-        _renderFloors = null;
+        _cachedRenderOrder = Array.Empty<int>();
+        _needRenderOrderUpdate = true;
         
         // 释放星球
         _redPlanet?.Dispose();
@@ -328,12 +331,6 @@ public partial class EditorPlayer : GameWindow
             : "未选择地板";
     }
     
-    private void ClearSelection()
-    {
-        _selectedFloorIndices.Clear();
-        _selectedFloors.Clear();
-        _statusMessage = "已清除选择";
-    }
 
     private async void LoadLevel(string? levelPath)
     {
@@ -361,7 +358,8 @@ public partial class EditorPlayer : GameWindow
                 }
                 _playerFloors = null;
             }
-            _renderFloors = null;
+            _cachedRenderOrder = Array.Empty<int>();
+            _needRenderOrderUpdate = true;
             
             // 释放星球
             _redPlanet?.Dispose();
@@ -511,7 +509,7 @@ public partial class EditorPlayer : GameWindow
             
             // 生成轨道网格（在主线程）
             _playerFloors = _floors.Select(x => new PlayerFloor(x)).ToList();
-            _renderFloors = _playerFloors.OrderBy(x => x.floor.renderOrder).ToList();
+            _needRenderOrderUpdate = true; // 标记需要更新渲染顺序
             
             _needsGLInitialization = false;
             _initialized = true;

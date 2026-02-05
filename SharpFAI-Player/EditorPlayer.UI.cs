@@ -25,8 +25,6 @@ public partial class EditorPlayer
         }
         
         RenderStatusBar();
-        
-        Title = $"SharpFAI Editor - {(_level != null ? Path.GetFileName(_levelPath) : "未加载关卡")}";
     }
 
     private void RenderMainLayout()
@@ -92,26 +90,19 @@ public partial class EditorPlayer
         const float startX = 0f;
         
         // 设置面板
-        ImGui.SetNextWindowPos(new Vector2(startX, startY), ImGuiCond.Always);
-        ImGui.SetNextWindowSize(new Vector2(_leftPanelWidth, height), ImGuiCond.Always);
-        ImGui.SetNextWindowSizeConstraints(new Vector2(200, height), new Vector2(ClientSize.X * 0.5f, height));
-        
-        ImGui.PushStyleVar(ImGuiStyleVar.WindowRounding, 0f);
-        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(10, 10));
-        ImGui.PushStyleColor(ImGuiCol.WindowBg, new Vector4(0.12f, 0.12f, 0.15f, 0.95f));
-        
-        var flags = ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoCollapse;
-        
-        if (ImGui.Begin("设置面板", flags))
+        var windowMinSize = new Vector2(200, height);
+        var windowMaxSize = new Vector2(ClientSize.X * 0.5f, height);
+        var windowSize = new Vector2(_leftPanelWidth, height);
+        var windowPos = new Vector2(startX, startY);
+        bool windowOpen = true;
+
+        if (ImGuiControls.BeginWindow("设置面板", ref windowOpen, windowPos, windowSize, windowMinSize, windowMaxSize))
         {
             ImGui.Text("设置面板 Settings Panel");
             ImGui.Separator();
             ImGui.Spacing();
             
             // 音乐文件设置 - 始终可用
-            ImGui.Text("音乐:");
-            ImGui.SameLine();
-            
             string musicFileName = "未选择";
             
             if (!string.IsNullOrEmpty(_musicFilePath))
@@ -132,7 +123,7 @@ public partial class EditorPlayer
             ImGui.PopItemWidth();
             
             ImGui.SameLine();
-            if (ImGui.Button("选择文件", new Vector2(70, 0)))
+            if (ImGuiControls.FixedButton("选择文件", 70, 0, () =>
             {
                 var filePath = Native.NativeAPI.OpenFileDialog(new Native.NativeAPI.FileFilter
                 {
@@ -146,39 +137,32 @@ public partial class EditorPlayer
                     _musicFilePath = filePath;
                     _statusMessage = $"已选择音乐: {Path.GetFileName(filePath)}";
                 }
+            }))
+            {
+                // 按钮已处理
             }
             
             ImGui.Spacing();
             
             // BPM 设置 - 始终可用
-            ImGui.Text("BPM:");
-            ImGui.SameLine();
-            ImGui.PushItemWidth(-1);
-            
-            if (ImGui.InputFloat("##BPM", ref _bpm, 0.1f, 1.0f, "%.2f"))
+            ImGuiControls.FloatInput("BPM:", "BPM", ref _bpm, 0.1f, 1.0f, "%.2f", (newValue) =>
             {
-                if (_bpm < 1f) _bpm = 1f;
-                if (_bpm > 999f) _bpm = 999f;
+                if (newValue < 1f) _bpm = 1f;
+                if (newValue > 999f) _bpm = 999f;
                 _statusMessage = $"BPM 设置为 {_bpm:F2}";
-            }
-            
-            ImGui.PopItemWidth();
+            });
             
             ImGui.Spacing();
             
             // 音高设置 - 始终可用，整数输入
-            ImGui.Text("音高:");
-            ImGui.SameLine();
-            ImGui.PushItemWidth(-1);
             int pitchInt = (int)_pitch;
-            if (ImGui.InputInt("##Pitch", ref pitchInt, 1, 10))
+            ImGuiControls.IntInput("音高:", "Pitch", ref pitchInt, 1, 10, (newValue) =>
             {
-                if (pitchInt < 50) pitchInt = 50;
-                if (pitchInt > 200) pitchInt = 200;
-                _pitch = pitchInt;
-                _statusMessage = $"音高设置为 {pitchInt}%";
-            }
-            ImGui.PopItemWidth();
+                if (newValue < 50) newValue = 50;
+                if (newValue > 200) newValue = 200;
+                _pitch = newValue;
+                _statusMessage = $"音高设置为 {newValue}%";
+            });
             
             // 在输入框旁边显示百分号提示
             if (ImGui.IsItemHovered())
@@ -209,13 +193,17 @@ public partial class EditorPlayer
             _leftPanelWidth = ImGui.GetWindowWidth();
         }
         
-        ImGui.End();
-        ImGui.PopStyleColor();
-        ImGui.PopStyleVar(2);
+        ImGuiControls.EndWindow();
         
         // 右侧紧贴的单个标签按钮
-        RenderSingleVerticalTab(_leftPanelWidth, startY, tabWidth, height, 
-            "⚙", "设置", ref _lastLeftTabClickTime, ref _leftPanelCollapsed);
+        if (ImGuiControls.VerticalTab("LeftTab", "⚙", "设置", _leftPanelWidth, startY, tabWidth, height, () =>
+        {
+            // 单击切换折叠状态
+            _leftPanelCollapsed = !_leftPanelCollapsed;
+        }))
+        {
+            // 标签按钮已处理
+        }
     }
 
     private void RenderEventInfoPanelWithTabs(float startY, float height, float tabWidth)
@@ -223,21 +211,23 @@ public partial class EditorPlayer
         var startX = ClientSize.X - _rightPanelWidth;
         
         // 左侧紧贴的单个标签按钮
-        RenderSingleVerticalTab(startX - tabWidth, startY, tabWidth, height,
-            "📝", "事件", ref _lastRightTabClickTime, ref _rightPanelCollapsed);
+        if (ImGuiControls.VerticalTab("RightTab", "📝", "事件", startX - tabWidth, startY, tabWidth, height, () =>
+        {
+            // 单击切换折叠状态
+            _rightPanelCollapsed = !_rightPanelCollapsed;
+        }))
+        {
+            // 标签按钮已处理
+        }
         
         // 事件信息面板
-        ImGui.SetNextWindowPos(new Vector2(startX, startY), ImGuiCond.Always);
-        ImGui.SetNextWindowSize(new Vector2(_rightPanelWidth, height), ImGuiCond.Always);
-        ImGui.SetNextWindowSizeConstraints(new Vector2(200, height), new Vector2(ClientSize.X * 0.5f, height));
-        
-        ImGui.PushStyleVar(ImGuiStyleVar.WindowRounding, 0f);
-        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(10, 10));
-        ImGui.PushStyleColor(ImGuiCol.WindowBg, new Vector4(0.12f, 0.12f, 0.15f, 0.95f));
-        
-        var flags = ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoCollapse;
-        
-        if (ImGui.Begin("事件信息", flags))
+        var windowMinSize = new Vector2(200, height);
+        var windowMaxSize = new Vector2(ClientSize.X * 0.5f, height);
+        var windowSize = new Vector2(_rightPanelWidth, height);
+        var windowPos = new Vector2(startX, startY);
+        bool windowOpen = true;
+
+        if (ImGuiControls.BeginWindow("事件信息", ref windowOpen, windowPos, windowSize, windowMinSize, windowMaxSize))
         {
             ImGui.Text("事件信息 Event Info");
             ImGui.Separator();
@@ -283,9 +273,7 @@ public partial class EditorPlayer
             _rightPanelWidth = ImGui.GetWindowWidth();
         }
         
-        ImGui.End();
-        ImGui.PopStyleColor();
-        ImGui.PopStyleVar(2);
+        ImGuiControls.EndWindow();
     }
 
     private void RenderEventSetPanelWithTabs(float startY, float tabHeight, float panelHeight)
@@ -307,14 +295,18 @@ public partial class EditorPlayer
             ImGui.Text("事件集 ↓");
             ImGui.SameLine();
             
-            if (ImGui.Button("🎯 事件集", new Vector2(80, 25)))
+            if (ImGuiControls.FixedButton("🎯 事件集", 80, 25, () =>
             {
-                HandleSingleTabDoubleClick(ref _lastBottomTabClickTime, ref _bottomPanelCollapsed);
+                // 单击切换折叠状态
+                _bottomPanelCollapsed = !_bottomPanelCollapsed;
+            }))
+            {
+                // 按钮已处理
             }
             
             if (ImGui.IsItemHovered())
             {
-                ImGui.SetTooltip("事件集 (双击折叠)");
+                ImGui.SetTooltip("事件集 (单击折叠)");
             }
         }
         
@@ -366,140 +358,23 @@ public partial class EditorPlayer
 
     private void RenderCollapsedLeftPanel(float startY, float height, float tabWidth)
     {
-        RenderSingleVerticalTab(0, startY, tabWidth, height, 
-            "⚙", "设置", ref _lastLeftTabClickTime, ref _leftPanelCollapsed);
+        if (ImGuiControls.VerticalTab("CollapsedLeft", "⚙", "设置", 0, startY, tabWidth, height, () =>
+        {
+            HandleSingleTabDoubleClick(ref _lastLeftTabClickTime, ref _leftPanelCollapsed);
+        }))
+        {
+            // 标签按钮已处理
+        }
     }
 
     private void RenderCollapsedRightPanel(float startY, float height, float tabWidth)
     {
-        RenderSingleVerticalTab(ClientSize.X - tabWidth, startY, tabWidth, height,
-            "📝", "事件", ref _lastRightTabClickTime, ref _rightPanelCollapsed);
-    }
-
-    private void RenderSingleVerticalTab(float x, float y, float width, float height, 
-        string icon, string tooltipText, ref double lastClickTime, ref bool panelCollapsed)
-    {
-        ImGui.SetNextWindowPos(new Vector2(x, y));
-        ImGui.SetNextWindowSize(new Vector2(width, height));
-        
-        ImGui.PushStyleVar(ImGuiStyleVar.WindowRounding, 0f);
-        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(2, 5));
-        ImGui.PushStyleColor(ImGuiCol.WindowBg, new Vector4(0.08f, 0.08f, 0.1f, 0.95f));
-        
-        if (ImGui.Begin($"##SingleTab{tooltipText}", ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.NoScrollbar))
+        if (ImGuiControls.VerticalTab("CollapsedRight", "📝", "事件", ClientSize.X - tabWidth, startY, tabWidth, height, () =>
         {
-            // 按钮居上，正方形尺寸
-            // Button at top, square size
-            float buttonSize = width - 4; // 正方形边长等于宽度
-            
-            if (ImGui.Button($"{icon}##{tooltipText}", new Vector2(buttonSize, buttonSize)))
-            {
-                HandleSingleTabDoubleClick(ref lastClickTime, ref panelCollapsed);
-            }
-            
-            if (ImGui.IsItemHovered())
-            {
-                ImGui.SetTooltip($"{tooltipText} (双击折叠)");
-            }
-        }
-        
-        ImGui.End();
-        ImGui.PopStyleColor();
-        ImGui.PopStyleVar(2);
-    }
-    
-    private void HandleSingleTabDoubleClick(ref double lastClickTime, ref bool panelCollapsed)
-    {
-        var currentTime = UpdateTime;
-        
-        if ((currentTime - lastClickTime) < DoubleClickTime)
+            HandleSingleTabDoubleClick(ref _lastRightTabClickTime, ref _rightPanelCollapsed);
+        }))
         {
-            // 双击，切换折叠状态
-            // Double click, toggle collapsed state
-            panelCollapsed = !panelCollapsed;
-            lastClickTime = 0; // 重置时间避免三击 / Reset to avoid triple click
-        }
-        else
-        {
-            // 单击，只记录时间，不做任何操作
-            // Single click, just record time, no action
-            lastClickTime = currentTime;
-        }
-    }
-
-    private void RenderMenuBar()
-    {
-        if (ImGui.BeginMainMenuBar())
-        {
-            if (ImGui.BeginMenu("文件 File"))
-            {
-                if (ImGui.MenuItem("打开关卡 Open Level", "Ctrl+O"))
-                {
-                    OpenLevelFile();
-                }
-                
-                ImGui.Separator();
-                
-                bool hasLevel = _level != null;
-                
-                if (ImGui.MenuItem("保存 Save", "Ctrl+S", false, hasLevel))
-                {
-                    SaveLevel();
-                }
-                
-                if (ImGui.MenuItem("另存为 Save As...", "Ctrl+Shift+S", false, hasLevel))
-                {
-                    SaveLevelAs();
-                }
-                
-                ImGui.Separator();
-                
-                if (ImGui.MenuItem("退出 Exit", "ESC"))
-                {
-                    Close();
-                }
-                ImGui.EndMenu();
-            }
-
-            if (ImGui.BeginMenu("播放 Playback"))
-            {
-                if (ImGui.MenuItem(_isPlaying ? "暂停 Pause" : "播放 Play", "Space"))
-                {
-                    if (_isPlaying)
-                        PausePlay();
-                    else
-                        StartPlay();
-                }
-                
-                if (ImGui.MenuItem("停止 Stop"))
-                {
-                    StopPlay();
-                }
-                ImGui.EndMenu();
-            }
-
-            if (ImGui.BeginMenu("工具 Tools"))
-            {
-                if (ImGui.MenuItem("刷新 Refresh", "F5"))
-                {
-                    if (_levelPath != null)
-                    {
-                        LoadLevel(_levelPath);
-                    }
-                }
-                ImGui.EndMenu();
-            }
-
-            if (ImGui.BeginMenu("帮助 Help"))
-            {
-                if (ImGui.MenuItem("关于编辑器 About Editor"))
-                {
-                    _showAboutWindow = true;
-                }
-                ImGui.EndMenu();
-            }
-
-            ImGui.EndMainMenuBar();
+            // 标签按钮已处理
         }
     }
 
@@ -542,9 +417,12 @@ public partial class EditorPlayer
             
             const float buttonWidth = 120f;
             ImGui.SetCursorPosX((ImGui.GetWindowWidth() - buttonWidth) / 2);
-            if (ImGui.Button("关闭 Close", new Vector2(buttonWidth, 30)))
+            if (ImGuiControls.FixedButton("关闭 Close", buttonWidth, 30, () =>
             {
                 _showAboutWindow = false;
+            }))
+            {
+                // 按钮已处理
             }
         }
         
@@ -636,5 +514,100 @@ public partial class EditorPlayer
         ImGui.End();
         ImGui.PopStyleColor();
         ImGui.PopStyleVar(2);
+    }
+    
+    private void RenderMenuBar()
+    {
+        if (ImGui.BeginMainMenuBar())
+        {
+            if (ImGui.BeginMenu("文件 File"))
+            {
+                if (ImGui.MenuItem("打开关卡 Open Level", "Ctrl+O"))
+                {
+                    OpenLevelFile();
+                }
+                
+                ImGui.Separator();
+                
+                bool hasLevel = _level != null;
+                
+                if (ImGui.MenuItem("保存 Save", "Ctrl+S", false, hasLevel))
+                {
+                    SaveLevel();
+                }
+                
+                if (ImGui.MenuItem("另存为 Save As...", "Ctrl+Shift+S", false, hasLevel))
+                {
+                    SaveLevelAs();
+                }
+                
+                ImGui.Separator();
+                
+                if (ImGui.MenuItem("退出 Exit", "ESC"))
+                {
+                    Close();
+                }
+                ImGui.EndMenu();
+            }
+
+            if (ImGui.BeginMenu("播放 Playback"))
+            {
+                if (ImGui.MenuItem(_isPlaying ? "暂停 Pause" : "播放 Play", "Space"))
+                {
+                    if (_isPlaying)
+                        PausePlay();
+                    else
+                        StartPlay();
+                }
+                
+                if (ImGui.MenuItem("停止 Stop"))
+                {
+                    StopPlay();
+                }
+                ImGui.EndMenu();
+            }
+
+            if (ImGui.BeginMenu("工具 Tools"))
+            {
+                if (ImGui.MenuItem("刷新 Refresh", "F5"))
+                {
+                    if (_levelPath != null)
+                    {
+                        LoadLevel(_levelPath);
+                    }
+                }
+                ImGui.EndMenu();
+            }
+
+            if (ImGui.BeginMenu("帮助 Help"))
+            {
+                if (ImGui.MenuItem("关于编辑器 About Editor"))
+                {
+                    _showAboutWindow = true;
+                }
+                ImGui.EndMenu();
+            }
+
+            ImGui.EndMainMenuBar();
+        }
+    }
+    
+    private void HandleSingleTabDoubleClick(ref double lastClickTime, ref bool panelCollapsed)
+    {
+        var currentTime = UpdateTime;
+        
+        if ((currentTime - lastClickTime) < DoubleClickTime)
+        {
+            // 双击，切换折叠状态
+            // Double click, toggle collapsed state
+            panelCollapsed = !panelCollapsed;
+            lastClickTime = 0; // 重置时间避免三击 / Reset to avoid triple click
+        }
+        else
+        {
+            // 单击，只记录时间，不做任何操作
+            // Single click, just record time, no action
+            lastClickTime = currentTime;
+        }
     }
 }

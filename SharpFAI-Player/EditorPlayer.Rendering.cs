@@ -12,14 +12,25 @@ public partial class EditorPlayer
 {
     private void RenderTracks()
     {
-        if (!_initialized || _shader == null || _camera2D == null || _renderFloors == null)
+        if (!_initialized || _shader == null || _camera2D == null || _playerFloors == null)
             return;
         
         _shader.Use();
         _camera2D.Render(_shader);
         
-        foreach (var floor in _renderFloors)
+        // 更新渲染顺序缓存（仅在需要时）
+        if (_needRenderOrderUpdate || _cachedRenderOrder.Length != _playerFloors.Count)
         {
+            _cachedRenderOrder = Enumerable.Range(0, _playerFloors.Count)
+                .OrderBy(i => _playerFloors[i].floor.renderOrder)
+                .ToArray();
+            _needRenderOrderUpdate = false;
+        }
+        
+        // 根据缓存的顺序渲染（renderOrder 越小越先渲染，在底层）
+        foreach (int i in _cachedRenderOrder)
+        {
+            var floor = _playerFloors[i];
             if (_camera2D.IsPointVisible(new Vector2(floor.floor.position.X, floor.floor.position.Y)))
             {
                 floor.Render(_shader);
@@ -59,7 +70,10 @@ public partial class EditorPlayer
     {
         // 仅在选中一个地板时显示按钮
         if (_selectedFloors.Count != 1 || _camera2D == null)
+        {
+            _isButtonWindowHovered = false;
             return;
+        }
         
         var selectedFloor = _selectedFloors[0];
         var floorWorldPos = new Vector2(selectedFloor.position.X, selectedFloor.position.Y);
@@ -68,142 +82,111 @@ public partial class EditorPlayer
         // 确保地板在屏幕可见范围内
         if (floorScreenPos.X < 0 || floorScreenPos.X > ClientSize.X || 
             floorScreenPos.Y < 0 || floorScreenPos.Y > ClientSize.Y)
+        {
+            _isButtonWindowHovered = false;
             return;
+        }
         
         // 设置按钮窗口位置（在轨道上方）
-        var buttonWindowPos = new Vector2(floorScreenPos.X - 130, floorScreenPos.Y - 80);
+        var buttonWindowPos = new Vector2(floorScreenPos.X - 175/2f, floorScreenPos.Y + 1 - 175/2f);
         ImGui.SetNextWindowPos(buttonWindowPos, ImGuiCond.Always);
-        ImGui.SetNextWindowSize(new Vector2(260, 70), ImGuiCond.Always);
+        ImGui.SetNextWindowSize(new Vector2(175, 175), ImGuiCond.Always);
         
-        // 半透明背景样式（不是完全透明，这样才能捕获鼠标）
-        ImGui.PushStyleColor(ImGuiCol.WindowBg, new Vector4(0.1f, 0.1f, 0.1f, 0.3f));
-        ImGui.PushStyleColor(ImGuiCol.Border, new Vector4(0.3f, 0.3f, 0.3f, 0.3f));
-        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(5, 5));
-        ImGui.PushStyleVar(ImGuiStyleVar.WindowRounding, 8f);
-        
-        // 移除 NoBackground 和 NoFocusOnAppearing，让窗口能捕获鼠标
+        // 关键：使用 NoInputs 让窗口完全不捕获输入，然后手动处理按钮
         var flags = ImGuiWindowFlags.NoTitleBar | 
                     ImGuiWindowFlags.NoResize | 
                     ImGuiWindowFlags.NoMove | 
                     ImGuiWindowFlags.NoScrollbar |
                     ImGuiWindowFlags.NoScrollWithMouse |
-                    ImGuiWindowFlags.NoCollapse |
-                    ImGuiWindowFlags.NoSavedSettings;
+                    ImGuiWindowFlags.NoBackground |
+                    ImGuiWindowFlags.NoNav |
+                    ImGuiWindowFlags.NoMouseInputs | // 窗口不捕获鼠标输入
+                    ImGuiWindowFlags.NoCollapse;
         
         if (ImGui.Begin("##TrackButtons", flags))
         {
+            var io = ImGui.GetIO();
+            var mousePos = ImGui.GetMousePos();
+            var windowPos = ImGui.GetWindowPos();
+            var windowSize = ImGui.GetWindowSize();
+            
+            // 检测鼠标是否在窗口区域内
+            bool mouseInWindow = mousePos.X >= windowPos.X && mousePos.X <= windowPos.X + windowSize.X &&
+                                 mousePos.Y >= windowPos.Y && mousePos.Y <= windowPos.Y + windowSize.Y;
+            
             // 按钮样式
             ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.25f, 0.25f, 0.3f, 0.9f));
             ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.35f, 0.35f, 0.4f, 1.0f));
             ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(0.45f, 0.45f, 0.5f, 1.0f));
             ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, 5f);
+            ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing, new Vector2(5f, 5f));
+
+            var buttonSize = new Vector2(50, 50);
+            var spacing = 5f;
+            var cursorStart = ImGui.GetCursorScreenPos();
             
-            var buttonSize = new Vector2(58, 55);
+            bool anyButtonHovered = false;
             
-            if (ImGui.Button("编辑\nEdit", buttonSize))
+            // 手动检测按钮点击
+            bool CheckButton(string label, Vector2 pos)
             {
-                _statusMessage = "编辑地板";
+                var buttonMin = pos;
+                var buttonMax = new Vector2(pos.X + buttonSize.X, pos.Y + buttonSize.Y);
+                bool hovered = mousePos.X >= buttonMin.X && mousePos.X <= buttonMax.X &&
+                               mousePos.Y >= buttonMin.Y && mousePos.Y <= buttonMax.Y;
+                
+                if (hovered) anyButtonHovered = true;
+                
+                ImGui.SetCursorScreenPos(pos);
+                
+                bool clicked = false;
+                if (hovered)
+                {
+                    ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.35f, 0.35f, 0.4f, 1.0f));
+                    if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+                    {
+                        clicked = true;
+                    }
+                    ImGui.Button(label, buttonSize);
+                    ImGui.PopStyleColor();
+                }
+                else
+                {
+                    ImGui.Button(label, buttonSize);
+                }
+                
+                return clicked;
             }
             
-            ImGui.SameLine();
-            if (ImGui.Button("删除\nDel", buttonSize))
-            {
-                _statusMessage = "删除地板";
-            }
+            /// QWE
+            /// A D
+            /// ZXC
+            float row1Y = cursorStart.Y;
+            float row2Y = row1Y + buttonSize.Y + spacing;
+            float row3Y = row2Y + buttonSize.Y + spacing;
             
-            ImGui.SameLine();
-            if (ImGui.Button("复制\nCopy", buttonSize))
-            {
-                _statusMessage = "复制地板";
-            }
+            float col1X = cursorStart.X;
+            float col2X = col1X + buttonSize.X + spacing;
+            float col3X = col2X + buttonSize.X + spacing;
             
-            ImGui.SameLine();
-            if (ImGui.Button("属性\nProp", buttonSize))
-            {
-                _statusMessage = "地板属性";
-            }
+            if (CheckButton("Q", new Vector2(col1X, row1Y))) { }
+            if (CheckButton("W", new Vector2(col2X, row1Y))) { }
+            if (CheckButton("E", new Vector2(col3X, row1Y))) { }
             
-            ImGui.PopStyleVar();
+            if (CheckButton("A", new Vector2(col1X, row2Y))) { }
+            if (CheckButton("D", new Vector2(col3X, row2Y))) { }
+            
+            if (CheckButton("Z", new Vector2(col1X, row3Y))) { }
+            if (CheckButton("X", new Vector2(col2X, row3Y))) { }
+            if (CheckButton("C", new Vector2(col3X, row3Y))) { }
+            
+            ImGui.PopStyleVar(2);
             ImGui.PopStyleColor(3);
+            
+            // 设置标志：鼠标在窗口内或在按钮上
+            _isButtonWindowHovered = mouseInWindow || anyButtonHovered;
         }
         
         ImGui.End();
-        ImGui.PopStyleVar(2);
-        ImGui.PopStyleColor(2);
-    }
-    
-    private void RenderShiftKeyHints()
-    {
-        if (_camera2D == null || _shader == null)
-            return;
-        
-        // 在屏幕中央显示按键布局提示
-        var centerX = ClientSize.X / 2f;
-        var centerY = ClientSize.Y / 2f;
-        
-        ImGui.SetNextWindowPos(new Vector2(centerX - 250, centerY - 200), ImGuiCond.Always);
-        ImGui.SetNextWindowSize(new Vector2(500, 400), ImGuiCond.Always);
-        
-        ImGui.PushStyleVar(ImGuiStyleVar.WindowRounding, 15f);
-        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(20, 20));
-        ImGui.PushStyleColor(ImGuiCol.WindowBg, new Vector4(0.05f, 0.05f, 0.08f, 0.85f));
-        ImGui.PushStyleColor(ImGuiCol.Border, new Vector4(0.3f, 0.5f, 0.8f, 0.5f));
-        
-        var flags = ImGuiWindowFlags.NoTitleBar | 
-                    ImGuiWindowFlags.NoResize | 
-                    ImGuiWindowFlags.NoMove | 
-                    ImGuiWindowFlags.NoCollapse |
-                    ImGuiWindowFlags.NoSavedSettings;
-        
-        if (ImGui.Begin("##ShiftKeyHints", flags))
-        {
-            // 标题
-            ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(1f, 1f, 0.3f, 1f));
-            var titleText = "⇧ SHIFT 模式 - 按键布局";
-            var titleSize = ImGui.CalcTextSize(titleText);
-            ImGui.SetCursorPosX((500 - titleSize.X) / 2);
-            ImGui.Text(titleText);
-            ImGui.PopStyleColor();
-            
-            ImGui.Spacing();
-            ImGui.Separator();
-            ImGui.Spacing();
-            
-            // 第一组按键 (QWEASDZXC)
-            ImGui.Text("第一组按键布局:");
-            ImGui.Spacing();
-            
-            ImGui.Indent(50);
-            ImGui.Text("    W");
-            ImGui.Text("Q       E");
-            ImGui.Text("A   S   D");
-            ImGui.Text("Z   X   C");
-            ImGui.Unindent(50);
-            
-            ImGui.Spacing();
-            ImGui.Separator();
-            ImGui.Spacing();
-            
-            // 第二组按键布局 (按住 Shift)
-            ImGui.Text("第二组按键布局 (按住 Shift):");
-            ImGui.Spacing();
-            
-            ImGui.Indent(50);
-            ImGui.Text("  T   Y");
-            ImGui.Text("H       J");
-            ImGui.Text("N   M");
-            ImGui.Text("  V   B");
-            ImGui.Unindent(50);
-            
-            ImGui.Spacing();
-            ImGui.Separator();
-            ImGui.Spacing();
-            
-            ImGui.TextWrapped("💡 提示: 这些按键可用于快速放置不同角度的轨道");
-        }
-        
-        ImGui.End();
-        ImGui.PopStyleColor(2);
-        ImGui.PopStyleVar(2);
     }
 }

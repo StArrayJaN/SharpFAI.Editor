@@ -5,6 +5,11 @@ using System.Runtime.CompilerServices;
 
 public class AudioMerger
 {
+    // 增量合成状态
+    private byte[]? _cachedMixedAudio;
+    private WaveFormat? _cachedFormat;
+    private int _lastProcessedInsertCount;
+    private List<AudioInsert>? _lastInserts;
 
     public class WaveFormat
     {
@@ -96,6 +101,228 @@ public class AudioMerger
         int num = inserts.Count + 4;
         AudioData baseAudio = ReadWav(baseMemoryStream);
         MixAudioCommon(baseAudio, inserts, outputPath, num);
+    }
+    
+    /// <summary>
+    /// 增量合成音频 - 智能检测变化并只处理差异
+    /// Incremental audio mixing - intelligently detect changes and only process differences
+    /// </summary>
+    public void MixAudioIncremental(string baseFile, List<AudioInsert> inserts, string outputPath)
+    {
+        AudioData baseAudio = ReadWav(baseFile);
+        MixAudioIncrementalCommon(baseAudio, inserts, outputPath);
+    }
+    
+    /// <summary>
+    /// 增量合成音频（使用内存流）- 智能检测变化并只处理差异
+    /// Incremental audio mixing (from memory stream) - intelligently detect changes and only process differences
+    /// </summary>
+    public void MixAudioIncremental(MemoryStream baseMemoryStream, List<AudioInsert> inserts, string outputPath)
+    {
+        AudioData baseAudio = ReadWav(baseMemoryStream);
+        MixAudioIncrementalCommon(baseAudio, inserts, outputPath);
+    }
+    
+    /// <summary>
+    /// 重置增量合成缓存
+    /// Reset incremental mixing cache
+    /// </summary>
+    public void ResetIncrementalCache()
+    {
+        _cachedMixedAudio = null;
+        _cachedFormat = null;
+        _lastProcessedInsertCount = 0;
+        _lastInserts = null;
+    }
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void MixAudioIncrementalCommon(AudioData baseAudio, List<AudioInsert> inserts, string outputPath)
+    {
+        WaveFormat format = baseAudio.Format;
+        int sampleRate = format.SampleRate;
+        int bytesPerSample = format.BitsPerSample / 8;
+        int channels = format.Channels;
+        int blockAlign = bytesPerSample * channels;
+        
+        // 计算所有插入点的位置
+        foreach (AudioInsert insert in inserts)
+        {
+            insert.Position = (int)(insert.Timestamp * sampleRate / 1000.0) * blockAlign;
+            insert.Position = Math.Min(insert.Position, baseAudio.Data.Length);
+        }
+        inserts.Sort((a, b) => a.Timestamp.CompareTo(b.Timestamp));
+        
+        byte[] mixedAudio;
+        
+        // 检查是否可以使用增量合成
+        bool canUseIncremental = _cachedMixedAudio != null && 
+                                  _cachedFormat != null &&
+                                  _lastInserts != null &&
+                                  _cachedMixedAudio.Length == baseAudio.Data.Length &&
+                                  _cachedFormat.SampleRate == format.SampleRate &&
+                                  _cachedFormat.BitsPerSample == format.BitsPerSample &&
+                                  _cachedFormat.Channels == format.Channels;
+        
+        if (canUseIncremental)
+        {
+            // 检测插入点的变化
+            var insertChanges = DetectInsertChanges(_lastInserts!, inserts);
+            
+            // 如果变化太大（超过50%），直接完整合成
+            if (insertChanges.RemovedCount + insertChanges.AddedCount > inserts.Count * 0.5)
+            {
+                // 变化太大，执行完整合成
+                mixedAudio = new byte[baseAudio.Data.Length];
+                Array.Copy(baseAudio.Data, mixedAudio, baseAudio.Data.Length);
+                
+                Dictionary<string, AudioData> audioCache = LoadAudioFiles(inserts);
+                MixAllInserts(mixedAudio, inserts, audioCache, format, blockAlign, baseAudio.Data.Length);
+            }
+            else if (insertChanges.RemovedCount > 0)
+            {
+                // 有删除的插入点，需要从基础音频重新开始
+                mixedAudio = new byte[baseAudio.Data.Length];
+                Array.Copy(baseAudio.Data, mixedAudio, baseAudio.Data.Length);
+                
+                // 加载所有需要的音频文件
+                Dictionary<string, AudioData> audioCache = LoadAudioFiles(inserts);
+                
+                // 混合所有插入点
+                MixAllInserts(mixedAudio, inserts, audioCache, format, blockAlign, baseAudio.Data.Length);
+            }
+            else if (insertChanges.AddedCount > 0)
+            {
+                // 只有新增，可以在缓存基础上增量混合
+                mixedAudio = new byte[_cachedMixedAudio.Length];
+                Array.Copy(_cachedMixedAudio, mixedAudio, _cachedMixedAudio.Length);
+                
+                // 只加载新增的音频文件
+                Dictionary<string, AudioData> audioCache = LoadAudioFiles(insertChanges.AddedInserts);
+                
+                // 只混合新增的插入点
+                MixAllInserts(mixedAudio, insertChanges.AddedInserts, audioCache, format, blockAlign, baseAudio.Data.Length);
+            }
+            else
+            {
+                // 没有变化，直接使用缓存
+                mixedAudio = _cachedMixedAudio;
+            }
+        }
+        else
+        {
+            // 首次合成或格式变化，执行完整合成
+            mixedAudio = new byte[baseAudio.Data.Length];
+            Array.Copy(baseAudio.Data, mixedAudio, baseAudio.Data.Length);
+            
+            // 加载所有音频文件
+            Dictionary<string, AudioData> audioCache = LoadAudioFiles(inserts);
+            
+            // 混合所有插入点
+            MixAllInserts(mixedAudio, inserts, audioCache, format, blockAlign, baseAudio.Data.Length);
+        }
+        
+        // 更新缓存
+        _cachedMixedAudio = mixedAudio;
+        _cachedFormat = format;
+        _lastProcessedInsertCount = inserts.Count;
+        _lastInserts = new List<AudioInsert>(inserts);
+        
+        // 写入输出文件
+        WriteWav(outputPath, mixedAudio, format);
+    }
+    
+    /// <summary>
+    /// 检测插入点的变化
+    /// </summary>
+    private class InsertChanges
+    {
+        public List<AudioInsert> AddedInserts { get; set; } = new();
+        public List<AudioInsert> RemovedInserts { get; set; } = new();
+        public int AddedCount => AddedInserts.Count;
+        public int RemovedCount => RemovedInserts.Count;
+    }
+    
+    private InsertChanges DetectInsertChanges(List<AudioInsert> oldInserts, List<AudioInsert> newInserts)
+    {
+        var changes = new InsertChanges();
+        
+        // 创建旧插入点的哈希集合（使用时间戳和文件路径作为键）
+        var oldSet = new HashSet<string>(
+            oldInserts.Select(i => $"{i.Timestamp}:{i.FilePath}")
+        );
+        
+        // 创建新插入点的哈希集合
+        var newSet = new HashSet<string>(
+            newInserts.Select(i => $"{i.Timestamp}:{i.FilePath}")
+        );
+        
+        // 找出新增的插入点
+        foreach (var insert in newInserts)
+        {
+            string key = $"{insert.Timestamp}:{insert.FilePath}";
+            if (!oldSet.Contains(key))
+            {
+                changes.AddedInserts.Add(insert);
+            }
+        }
+        
+        // 找出删除的插入点
+        foreach (var insert in oldInserts)
+        {
+            string key = $"{insert.Timestamp}:{insert.FilePath}";
+            if (!newSet.Contains(key))
+            {
+                changes.RemovedInserts.Add(insert);
+            }
+        }
+        
+        return changes;
+    }
+    
+    /// <summary>
+    /// 加载音频文件到缓存
+    /// </summary>
+    private Dictionary<string, AudioData> LoadAudioFiles(List<AudioInsert> inserts)
+    {
+        var audioCache = new Dictionary<string, AudioData>();
+        var uniqueFiles = inserts
+            .Where(i => !string.IsNullOrEmpty(i.FilePath))
+            .Select(i => i.FilePath)
+            .Distinct()
+            .ToList();
+        
+        foreach (string filePath in uniqueFiles)
+        {
+            if (!audioCache.ContainsKey(filePath))
+            {
+                audioCache[filePath] = ReadWav(filePath);
+            }
+        }
+        
+        return audioCache;
+    }
+    
+    /// <summary>
+    /// 混合所有插入点
+    /// </summary>
+    private void MixAllInserts(byte[] mixedAudio, List<AudioInsert> inserts, 
+        Dictionary<string, AudioData> audioCache, WaveFormat format, int blockAlign, int maxLength)
+    {
+        foreach (AudioInsert insert in inserts)
+        {
+            if (!audioCache.ContainsKey(insert.FilePath))
+                continue;
+                
+            AudioData insertAudio = audioCache[insert.FilePath];
+            int position = insert.Position;
+            position = position / blockAlign * blockAlign;
+            int mixLength = Math.Min(insertAudio.Data.Length, maxLength - position);
+            
+            if (mixLength > 0)
+            {
+                MixSamples(mixedAudio, insertAudio.Data, position, format);
+            }
+        }
     }
     
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

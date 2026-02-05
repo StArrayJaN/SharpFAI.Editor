@@ -341,8 +341,8 @@ public partial class EditorPlayer : IPlayer
             }
             _playerFloors = null;
         }
-        
-        _renderFloors = null;
+        _cachedRenderOrder = Array.Empty<int>();
+        _needRenderOrderUpdate = true;
         
         // 释放星球
         // Dispose planets

@@ -15,6 +15,7 @@ public partial class EditorPlayer
     private Vector2 _lastMousePos;
     private bool _isDragging;
     private bool _wasMouseMoving; // 检测是否是拖动还是点击
+    private int _anchorFloorIndex = -1; // 范围选择的锚点索引（第一次选择的轨道）
     #endregion
     
     private void HandleInput()
@@ -80,7 +81,11 @@ public partial class EditorPlayer
             // 鼠标释放时，如果没有移动，则处理点击
             if (_isDragging && !_wasMouseMoving)
             {
-                HandleFloorClick(currentMousePos);
+                // 检查鼠标是否在按钮窗口上，如果是则不处理地板点击
+                if (!_isButtonWindowHovered)
+                {
+                    HandleFloorClick(currentMousePos);
+                }
             }
             
             _isDragging = false;
@@ -97,7 +102,7 @@ public partial class EditorPlayer
         if (MouseState.ScrollDelta.Y != 0)
         {
             // 计算缩放因子
-            float zoomFactor = MouseState.ScrollDelta.Y > 0 ? 1.25f : 0.8f;
+            float zoomFactor = MouseState.ScrollDelta.Y < 0 ? 1.25f : 0.8f;
             
             // 获取鼠标在屏幕上的位置
             Vector2 mouseScreenPos = new Vector2(MouseState.X, MouseState.Y);
@@ -172,18 +177,19 @@ public partial class EditorPlayer
         {
             int clickedIndex = _floors.IndexOf(clickedFloor);
             
-            if (_isShiftPressed)
+            if (_isShiftPressed && _anchorFloorIndex >= 0)
             {
-                // Shift + 点击：范围选择
+                // Shift + 点击：范围选择（保持锚点不变）
                 HandleRangeSelection(clickedIndex);
             }
             else
             {
-                // 普通点击：单选
-                _selectedFloorIndices.Clear();
-                _selectedFloors.Clear();
+                // 普通点击：单选（设置新的锚点）
+                ClearSelection();
+                _anchorFloorIndex = clickedIndex;
                 _selectedFloorIndices.Add(clickedIndex);
                 _selectedFloors.Add(clickedFloor);
+                UpdateFloorSelection(clickedIndex, true);
                 _statusMessage = $"已选择地板 {clickedIndex}";
             }
         }
@@ -192,8 +198,8 @@ public partial class EditorPlayer
             // 点击空白处，清除选择（仅在非 Shift 模式）
             if (!_isShiftPressed)
             {
-                _selectedFloorIndices.Clear();
-                _selectedFloors.Clear();
+                ClearSelection();
+                _anchorFloorIndex = -1;
                 _statusMessage = "已清除选择";
             }
         }
@@ -201,28 +207,27 @@ public partial class EditorPlayer
     
     /// <summary>
     /// 处理范围选择（Shift + 点击）
+    /// 保持第一次选择的轨道作为锚点
     /// </summary>
     private void HandleRangeSelection(int clickedIndex)
     {
-        if (_selectedFloorIndices.Count == 0)
+        if (_anchorFloorIndex < 0)
         {
-            // 没有之前的选择，直接选中
+            // 没有锚点，直接选中并设置为锚点
+            _anchorFloorIndex = clickedIndex;
             _selectedFloorIndices.Add(clickedIndex);
             _selectedFloors.Add(_floors![clickedIndex]);
+            UpdateFloorSelection(clickedIndex, true);
             _statusMessage = $"已选择地板 {clickedIndex}";
             return;
         }
         
-        // 获取最后选择的索引
-        int lastIndex = _selectedFloorIndices[^1];
+        // 清除当前选择（但保持锚点）
+        ClearSelection();
         
-        // 清除当前选择
-        _selectedFloorIndices.Clear();
-        _selectedFloors.Clear();
-        
-        // 选择范围内的所有地板
-        int startIndex = Math.Min(lastIndex, clickedIndex);
-        int endIndex = Math.Max(lastIndex, clickedIndex);
+        // 从锚点到点击位置选择范围内的所有地板
+        int startIndex = Math.Min(_anchorFloorIndex, clickedIndex);
+        int endIndex = Math.Max(_anchorFloorIndex, clickedIndex);
         
         for (int i = startIndex; i <= endIndex; i++)
         {
@@ -230,10 +235,36 @@ public partial class EditorPlayer
             {
                 _selectedFloorIndices.Add(i);
                 _selectedFloors.Add(_floors[i]);
+                UpdateFloorSelection(i, true);
             }
         }
         
-        _statusMessage = $"已选择 {_selectedFloors.Count} 个地板";
+        _statusMessage = $"已选择 {_selectedFloors.Count} 个地板 (索引 {startIndex}-{endIndex})";
+    }
+    
+    /// <summary>
+    /// 更新地板的选中状态（设置绿色高亮）
+    /// </summary>
+    private void UpdateFloorSelection(int floorIndex, bool selected)
+    {
+        if (_playerFloors == null || floorIndex < 0 || floorIndex >= _playerFloors.Count)
+            return;
+        
+        _playerFloors[floorIndex].SetSelected(selected);
+    }
+    
+    /// <summary>
+    /// 清除所有选择
+    /// </summary>
+    private void ClearSelection()
+    {
+        // 清除所有地板的选中状态
+        foreach (var index in _selectedFloorIndices)
+        {
+            UpdateFloorSelection(index, false);
+        }
+        _selectedFloorIndices.Clear();
+        _selectedFloors.Clear();
     }
     
     /// <summary>

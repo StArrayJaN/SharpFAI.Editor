@@ -19,6 +19,9 @@ public class NativeAPI
     
     [DllImport("user32.dll")]
     public static extern IntPtr GetForegroundWindow();
+    
+    [DllImport("user32.dll")]
+    public static extern void keybd_event(int vk, byte scanCode, uint flags, uint extraInfo);
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
     private struct OpenFileName

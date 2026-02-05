@@ -170,6 +170,34 @@ public class GLMesh : Mesh
     }
     
     /// <summary>
+    /// Update vertex colors dynamically / 动态更新顶点颜色
+    /// </summary>
+    public void UpdateColors(Vector4[] newColors)
+    {
+        if (newColors == null || newColors.Length != Colors.Length)
+            throw new ArgumentException("Color array length must match existing colors");
+        
+        Colors = newColors;
+        
+        if (_isGLInitialized && _colorVbo != 0)
+        {
+            GL.BindBuffer(BufferTarget.ArrayBuffer, _colorVbo);
+            
+            float[] colorData = new float[Colors.Length * 4];
+            for (int i = 0; i < Colors.Length; i++)
+            {
+                colorData[i * 4 + 0] = Colors[i].X;
+                colorData[i * 4 + 1] = Colors[i].Y;
+                colorData[i * 4 + 2] = Colors[i].Z;
+                colorData[i * 4 + 3] = Colors[i].W;
+            }
+            GL.BufferData(BufferTarget.ArrayBuffer, colorData.Length * sizeof(float), colorData, BufferUsageHint.DynamicDraw);
+            
+            GL.BindBuffer(BufferTarget.ArrayBuffer, 0);
+        }
+    }
+    
+    /// <summary>
     /// Delete OpenGL buffers / 删除OpenGL缓冲区
     /// </summary>
     private void DeleteBuffers()
