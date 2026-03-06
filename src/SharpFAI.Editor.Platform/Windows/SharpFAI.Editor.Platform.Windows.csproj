@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <Platform>win-x64</Platform>
+    <OutputType>WinExe</OutputType>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- 定义编译条件 -->
+    <DefineConstants>$(DefineConstants);WINDOWS</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\SharpFAI.Editor.Core\SharpFAI.Editor.Core.csproj" />
+    <ProjectReference Include="..\Abstractions\SharpFAI.Editor.Platform.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>
